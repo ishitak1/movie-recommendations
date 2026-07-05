@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Recommendation Lab</title>
+</head>
+<body>
+
+<h2>Recommendation Lab</h2>
+<p id="stats">loading stats...</p>
+
+<h3>Movies (tick what you like)</h3>
+<input type="text" id="search" placeholder="filter movies..." onkeyup="filterMovies()">
+<div id="movieList" style="height:300px; overflow-y:scroll; border:1px solid #999; padding:8px;"></div>
+
+<p id="likedCount">0 liked</p>
+
+<h3>Algorithm</h3>
+<select id="algoSelect">
+  <option value="popularity">Popularity</option>
+  <option value="content">Content-based (genre similarity)</option>
+  <option value="item_cf">Item-based collaborative filtering</option>
+  <option value="user_cf">User-based collaborative filtering</option>
+</select>
+<button onclick="getRecommendations()">Get Recommendations</button>
+
+<h3>Results</h3>
+<table border="1" cellpadding="6" id="resultsTable">
+  <thead><tr><th>Title</th><th>Score</th><th>Reason</th></tr></thead>
+  <tbody id="resultsBody"></tbody>
+</table>
+<p id="statusMsg"></p>
+
+<script>
+const API = "http://localhost:8000";
+let allMovies = [];
+let liked = new Set();
+
+async function loadStats() {
+  try {
+    const res = await fetch(API + "/stats");
+    const s = await res.json();
+    document.getElementById("stats").innerText =
+      `Users: ${s.n_users} | Movies: ${s.n_movies} | Ratings: ${s.n_ratings} | Sparsity: ${(s.sparsity*100).toFixed(1)}%`;
+  } catch (e) {
+    document.getElementById("stats").innerText = "Could not reach backend at " + API + ". Is uvicorn running?";
+  }
+}
+
+async function loadMovies() {
+  try {
+    const res = await fetch(API + "/movies");
+    allMovies = await res.json();
+    renderMovies(allMovies);
+  } catch (e) {
+    document.getElementById("movieList").innerText = "Failed to load movies from backend.";
+  }
+}
+
+function renderMovies(movies) {
+  const container = document.getElementById("movieList");
+  container.innerHTML = "";
+  movies.forEach(m => {
+    const label = document.createElement("label");
+    label.style.display = "block";
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = liked.has(m.movie_id);
+    checkbox.onchange = () => {
+      if (checkbox.checked) liked.add(m.movie_id);
+      else liked.delete(m.movie_id);
+      document.getElementById("likedCount").innerText = liked.size + " liked";
+    };
+    label.appendChild(checkbox);
+    label.appendChild(document.createTextNode(" " + m.title));
+    container.appendChild(label);
+  });
+}
+
+function filterMovies() {
+  const q = document.getElementById("search").value.toLowerCase();
+  renderMovies(allMovies.filter(m => m.title.toLowerCase().includes(q)));
+}
+
+async function getRecommendations() {
+  const algo = document.getElementById("algoSelect").value;
+  const status = document.getElementById("statusMsg");
+  const body = document.getElementById("resultsBody");
+  body.innerHTML = "";
+  status.innerText = "Loading...";
+
+  try {
+    const res = await fetch(API + "/recommend", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        liked_movie_ids: Array.from(liked),
+        algorithm: algo,
+        top_n: 10
+      })
+    });
+    const data = await res.json();
+
+    if (data.error) {
+      status.innerText = "Error: " + data.error;
+      return;
+    }
+
+    status.innerText = `Got ${data.recommendations.length} results from '${data.algorithm}'`;
+
+    data.recommendations.forEach(r => {
+      const row = document.createElement("tr");
+      row.innerHTML = `<td>${r.title}</td><td>${r.score}</td><td>${r.reason}</td>`;
+      body.appendChild(row);
+    });
+  } catch (e) {
+    status.innerText = "Request failed: " + e;
+  }
+}
+
+loadStats();
+loadMovies();
+</script>
+
+</body>
+</html>
