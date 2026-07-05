@@ -1,4 +1,4 @@
-# Recommendation Lab
+# Movie-Recommendations
 
 A movie recommendation engine built from scratch. Six algorithms, implemented without using any recommendation library, plus a FastAPI backend and a simple frontend to try them live.
 
